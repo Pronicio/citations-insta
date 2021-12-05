@@ -4,6 +4,8 @@ const client = createClient('563492ad6f91700001000001e1dade5cc314438294bf4799806
 const canvas = require('canvas');
 const { createCanvas, loadImage } = canvas;
 
+const imgbbUploader = require("imgbb-uploader");
+
 const axios = require('axios');
 const fs = require('fs');
 const { readFile } = require('fs');
@@ -21,6 +23,9 @@ main()
 
 async function main() {
 
+    ig.state.generateDevice(instaInfos.username);
+    await ig.account.login(instaInfos.username, instaInfos.password);
+
     let now = new Date();
     let millisTill10 = new Date(now.getFullYear(), now.getMonth(), now.getDate(), 10, 0, 0, 0) - now;
 
@@ -35,6 +40,7 @@ async function main() {
     }
 
     async function CitationTheme() {
+        console.log("=> Citation theme start.")
         let citations = [
             'alcool',
             'ambition',
@@ -81,11 +87,12 @@ async function main() {
         let citationWithTheme = `https://citations.ouest-france.fr/apis/export.php?json&lite=1&key=464fzer5&t=theme&theme=${theme}`
 
         let res = await upload(citationWithTheme)
-        if (!res) CitationTheme()
+        console.log("=> End : ", res)
+        if (res === false) CitationTheme()
     }
 
     setInterval(CitationDay, millisTill10);
-    setInterval(CitationTheme, 300000); //43200000
+    setInterval(CitationTheme, 10800000); //3h
 }
 
 async function upload(url) {
@@ -118,10 +125,11 @@ async function upload(url) {
                 stream.pipe(out);
                 out.on('finish', async () => {
                   let resultPhoto = await insta(citation.data, photo, __dirname + '/out.jpg');
-                  console.log(resultPhoto)
                   // delete file
                   //fs.unlinkSync(__dirname + '/out.jpg');
                 });
+
+                return true
             
             })
         });
@@ -130,16 +138,28 @@ async function upload(url) {
 }
 
 async function insta(citation, photo, path) {
-    console.log("Citation : ", citation)
-    console.log("Photo : ", photo)
 
-    ig.state.generateDevice(instaInfos.username);
-    await ig.account.login(instaInfos.username, instaInfos.password);
+    let url = await imgbbUploader("dfab0d40e28bd95243df755881260488", path);
+    url = encodeURIComponent(url.url)
+
+    let hashtag = await axios.get(`https://api.ritekit.com/v1/stats/hashtag-suggestions-image?image=${url}&client_id=a95444f41289bf35764427631d27e6ef5a9ba9256a8f`)
+    console.log(hashtag)
+
+    let caption = `${citation.quote} | ${citation.name} \n\n`;
+
+    await hashtag.data.data.forEach(el => {
+        console.log(el.tag)
+        caption = caption.concat(' ', `#${el.tag}`)
+    });
+
+    console.log(caption)
 
     let publishResult = await ig.publish.photo({
         file: await readFileAsync(path),
-        caption: ``
+        caption: caption
     });
+
+    console.log(publishResult)
 
     return publishResult
 }

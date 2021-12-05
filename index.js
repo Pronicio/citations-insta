@@ -6,58 +6,95 @@ const { createCanvas, loadImage } = canvas;
 
 const axios = require('axios');
 const fs = require('fs');
+const { readFile } = require('fs');
+const { promisify } = require('util');
+const readFileAsync = promisify(readFile);
 
-(async () => {
-    let citationOfDay = await axios.get('https://citations.ouest-france.fr/apis/export.php?json&lite=1&key=464fzer5&t=day')
+const { IgApiClient } = require('instagram-private-api');
+const ig = new IgApiClient();
+let instaInfos =  {
+    username: 'citations_motivations_insta',
+    password: 's!RoET!7bTsTyigQ'
+}
 
-    let citations = [ 
-        'alcool',
-        'ambition',
-        'amitie', 
-        'amour',
-        'animaux', 
-        'anniversaire',
-        'apprendre',
-        'argent',
-        'art',       
-        'attente',
-        'autorite',
-        'aventure',
-        'aveugle',
-        'beaute',    
-        'besoin',  
-        'betise',  
-        'blessure',
-        'bonheur',
-        'changement',
-        'choix',
-        'comique',
-        'communication',
-        'compliment',
-        'confort',
-        'connaissance',
-        'conscience',
-        'corps' ,
-        'couleur',
-        'crise',
-        'critique',
-        'croire',
-        'cuisine',
-        'culture',
-        'danger',
-        'deception',
-        'decision',
-        'defauts',
-        'depart',
-        'deprime',
-        'destin',
-    ]
-    let theme = citations[Math.floor(Math.random() * citations.length)];
-    let citationWithTheme = await axios.get(`https://citations.ouest-france.fr/apis/export.php?json&lite=1&key=464fzer5&t=theme&theme=${theme}`)
+main()
 
-    let textCount = citationWithTheme.data.quote.length
+async function main() {
+
+    let now = new Date();
+    let millisTill10 = new Date(now.getFullYear(), now.getMonth(), now.getDate(), 10, 0, 0, 0) - now;
+
+    if (millisTill10 < 0) {
+        millisTill10 += 86400000; // it's after 10am, try 10am tomorrow.
+    }
+
+    async function CitationDay() {
+        let citationOfDay = 'https://citations.ouest-france.fr/apis/export.php?json&lite=1&key=464fzer5&t=day'
+        let res = await upload(citationOfDay)
+        if (!res) CitationDay()
+    }
+
+    async function CitationTheme() {
+        let citations = [
+            'alcool',
+            'ambition',
+            'amitie',
+            'amour',
+            'animaux',
+            'anniversaire',
+            'apprendre',
+            'argent',
+            'art',
+            'attente',
+            'autorite',
+            'aventure',
+            'aveugle',
+            'beaute',
+            'besoin',
+            'betise',
+            'blessure',
+            'bonheur',
+            'changement',
+            'choix',
+            'comique',
+            'communication',
+            'compliment',
+            'confort',
+            'connaissance',
+            'conscience',
+            'corps' ,
+            'couleur',
+            'crise',
+            'critique',
+            'croire',
+            'cuisine',
+            'culture',
+            'danger',
+            'deception',
+            'decision',
+            'defauts',
+            'depart',
+            'deprime',
+            'destin',
+        ]
+        let theme = citations[Math.floor(Math.random() * citations.length)];
+        let citationWithTheme = `https://citations.ouest-france.fr/apis/export.php?json&lite=1&key=464fzer5&t=theme&theme=${theme}`
+
+        let res = await upload(citationWithTheme)
+        if (!res) CitationTheme()
+    }
+
+    setInterval(CitationDay, millisTill10);
+    setInterval(CitationTheme, 300000); //43200000
+}
+
+async function upload(url) {
+
+    let citation = await axios.get(url);
+
+    let textCount = citation.data.quote.length
     if (textCount >= 127) {
-        return console.log("Texte trop grand !")
+        return false
     }
 
     const params = {
@@ -71,16 +108,17 @@ const fs = require('fs');
         //console.log(photos)
         client.photos.show({ id: photos.photos[0].id }).then(photo => {
             //console.log(photo)
-            drawImage(citationWithTheme.data.quote, photo.src.original).then(async canvas => {
+            drawImage(citation.data.quote, photo.src.original).then(async canvas => {
 
-                if (!canvas) return
+                if (!canvas) return false
 
                 // save as jpeg
                 const out = fs.createWriteStream(__dirname + '/out.jpg');
                 const stream = canvas.createJPEGStream();
                 stream.pipe(out);
                 out.on('finish', async () => {
-                  //const media = await post(__dirname + '/out.jpg', quote + '\n' + `📷 @${r[1]} via Unsplash`);
+                  let resultPhoto = await insta(citation.data, photo, __dirname + '/out.jpg');
+                  console.log(resultPhoto)
                   // delete file
                   //fs.unlinkSync(__dirname + '/out.jpg');
                 });
@@ -89,7 +127,22 @@ const fs = require('fs');
         });
     });
     
-})();
+}
+
+async function insta(citation, photo, path) {
+    console.log("Citation : ", citation)
+    console.log("Photo : ", photo)
+
+    ig.state.generateDevice(instaInfos.username);
+    await ig.account.login(instaInfos.username, instaInfos.password);
+
+    let publishResult = await ig.publish.photo({
+        file: await readFileAsync(path),
+        caption: ``
+    });
+
+    return publishResult
+}
 
 function drawImage(quoteString, url) {
     const canvas = createCanvas(1080, 1080);
@@ -117,10 +170,7 @@ function drawImage(quoteString, url) {
       let arrayPhrases = file.phrases
 
       let find = arrayPhrases.find(phrase => phrase === quoteString);
-      if (find) {
-          console.log('already text')
-          return false
-      }
+      if (find) return false
 
       arrayPhrases.push(quoteString)
       fs.writeFileSync(name, JSON.stringify(file));

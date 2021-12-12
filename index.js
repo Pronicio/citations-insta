@@ -12,11 +12,13 @@ const { readFile } = require('fs');
 const { promisify } = require('util');
 const readFileAsync = promisify(readFile);
 
+const puppeteer = require('puppeteer');
+
 const { IgApiClient } = require('instagram-private-api');
 const ig = new IgApiClient();
 let instaInfos =  {
-    username: 'citations_motivations_insta',
-    password: 's!RoET!7bTsTyigQ'
+    username: 'citations_de_motivation_insta',
+    password: 'tqdDqz4pL@F#j!@J'
 }
 
 main()
@@ -91,6 +93,8 @@ async function main() {
         if (res === false) CitationTheme()
     }
 
+    CitationTheme()
+
     setInterval(CitationDay, millisTill10);
     setInterval(CitationTheme, 10800000); //3h
 }
@@ -100,7 +104,8 @@ async function upload(url) {
     let citation = await axios.get(url);
 
     let textCount = citation.data.quote.length
-    if (textCount >= 127) {
+    console.log('textCount', textCount)
+    if (textCount >= 105) {
         return false
     }
 
@@ -112,14 +117,11 @@ async function upload(url) {
     }
     
     client.photos.search(params).then(photos => {
-        //console.log(photos)
         client.photos.show({ id: photos.photos[0].id }).then(photo => {
-            //console.log(photo)
             drawImage(citation.data.quote, photo.src.original).then(async canvas => {
 
                 if (!canvas) return false
 
-                // save as jpeg
                 const out = fs.createWriteStream(__dirname + '/out.jpg');
                 const stream = canvas.createJPEGStream();
                 stream.pipe(out);
@@ -142,24 +144,12 @@ async function insta(citation, photo, path) {
     let url = await imgbbUploader("dfab0d40e28bd95243df755881260488", path);
     url = encodeURIComponent(url.url)
 
-    let hashtag = await axios.get(`https://api.ritekit.com/v1/stats/hashtag-suggestions-image?image=${url}&client_id=a95444f41289bf35764427631d27e6ef5a9ba9256a8f`)
-    console.log(hashtag)
-
-    let caption = `${citation.quote} | ${citation.name} \n\n`;
-
-    await hashtag.data.data.forEach(el => {
-        console.log(el.tag)
-        caption = caption.concat(' ', `#${el.tag}`)
-    });
-
-    console.log(caption)
+    let caption = `${citation.quote} | ${citation.name} \n\n #citation #proverbe #quoteoftheday #motivate #successful #sketchart #illustrationart #illustrate #graphic_designer #organism #photocaption #livingthings #happymoment #instaart #happy #font #brand #graphics #event #logo #happythoughts #happymood #graphic_arts #niceatmosphere`;
 
     let publishResult = await ig.publish.photo({
         file: await readFileAsync(path),
         caption: caption
     });
-
-    console.log(publishResult)
 
     return publishResult
 }

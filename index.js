@@ -1,220 +1,172 @@
+const dotenv = require('dotenv').config().parsed;
+
+const axios = require('axios');
+const cheerio = require('cheerio');
+
 const { createClient } = require('pexels');
-const client = createClient('563492ad6f91700001000001e1dade5cc314438294bf4799806e33b5');
+const pexels = createClient(process.env.PEXELS_TOKEN);
 
 const canvas = require('canvas');
 const { createCanvas, loadImage } = canvas;
 
-const imgbbUploader = require("imgbb-uploader");
-
-const axios = require('axios');
 const fs = require('fs');
 const { readFile } = require('fs');
 const { promisify } = require('util');
 const readFileAsync = promisify(readFile);
 
-const puppeteer = require('puppeteer');
-
 const { IgApiClient } = require('instagram-private-api');
 const ig = new IgApiClient();
-let instaInfos =  {
-    username: 'citations_de_motivation_insta',
-    password: 'tqdDqz4pL@F#j!@J'
-}
 
-main()
+main().then()
 
 async function main() {
 
-    ig.state.generateDevice(instaInfos.username);
-    await ig.account.login(instaInfos.username, instaInfos.password);
+    const citation = await randomCitation("art")
 
-    let now = new Date();
+    const now = new Date();
     let millisTill10 = new Date(now.getFullYear(), now.getMonth(), now.getDate(), 10, 0, 0, 0) - now;
 
     if (millisTill10 < 0) {
-        millisTill10 += 86400000; // it's after 10am, try 10am tomorrow.
+        millisTill10 += 86400000;
     }
 
-    async function CitationDay() {
-        let citationOfDay = 'https://citations.ouest-france.fr/apis/export.php?json&lite=1&key=464fzer5&t=day'
-        let res = await upload(citationOfDay)
-        if (!res) CitationDay()
-    }
-
-    async function CitationTheme() {
-        console.log("=> Citation theme start.")
-        let citations = [
-            'alcool',
-            'ambition',
-            'amitie',
-            'amour',
-            'animaux',
-            'anniversaire',
-            'apprendre',
-            'argent',
-            'art',
-            'attente',
-            'autorite',
-            'aventure',
-            'aveugle',
-            'beaute',
-            'besoin',
-            'betise',
-            'blessure',
-            'bonheur',
-            'changement',
-            'choix',
-            'comique',
-            'communication',
-            'compliment',
-            'confort',
-            'connaissance',
-            'conscience',
-            'corps' ,
-            'couleur',
-            'crise',
-            'critique',
-            'croire',
-            'cuisine',
-            'culture',
-            'danger',
-            'deception',
-            'decision',
-            'defauts',
-            'depart',
-            'deprime',
-            'destin',
-        ]
-        let theme = citations[Math.floor(Math.random() * citations.length)];
-        let citationWithTheme = `https://citations.ouest-france.fr/apis/export.php?json&lite=1&key=464fzer5&t=theme&theme=${theme}`
-
-        let res = await upload(citationWithTheme)
-        console.log("=> End : ", res)
-        if (res === false) CitationTheme()
-    }
-
-    CitationTheme()
-
-    setInterval(CitationDay, millisTill10);
-    setInterval(CitationTheme, 10800000); //3h
+    setInterval(citationOfTheDay, millisTill10);
+    //setInterval(CitationTheme, 10800000); //3h
 }
 
-async function upload(url) {
+async function citationOfTheDay() {
+    const scrap = await axios({
+        url: "https://www.dicocitations.com/citationdujour.php",
+        method: "get"
+    })
 
-    let citation = await axios.get(url);
+    const $ = cheerio.load(scrap.data);
 
-    let textCount = citation.data.quote.length
-    console.log('textCount', textCount)
-    if (textCount >= 105) {
-        return false
+    const text = $("blockquote span b")
+    const author = $("blockquote span div a")
+
+    return {
+        text: text.text(),
+        author: author.text()
     }
+}
 
+async function randomCitation(word) {
+    const page = Math.floor(Math.random() * 100)
+
+    const scrap = await axios({
+        url: `https://www.dicocitations.com/citation/${word}/1/${page}.php`,
+        method: "get"
+    })
+
+    const $ = cheerio.load(scrap.data, { decodeEntities: true });
+
+    const data = []
+
+    $('blockquote').each((index, element) => {
+        const el = $(element)
+        const text = el.text()
+        console.log(text);
+
+        const parent = el.next().next().next()
+        const author = parent.children().children().text()
+
+        data.push({ text, author })
+    });
+
+    const citation = data[Math.floor(Math.random() * data.length)];
+    const photo = await getPhoto(word)
+
+    await makeImage(citation.text, citation.author, photo.src.original, photo.avg_color)
+}
+
+async function getPhoto(theme, page) {
     const params = {
-        query: 'Nature',
-        page: Math.floor(Math.random() * 50),
-        per_page: Math.floor(Math.random() * 10), 
+        query: theme,
+        page: page || Math.floor(Math.random() * 80),
+        per_page: 50,
         orientation: 'square'
     }
-    
-    client.photos.search(params).then(photos => {
-        client.photos.show({ id: photos.photos[0].id }).then(photo => {
-            drawImage(citation.data.quote, photo.src.original).then(async canvas => {
 
-                if (!canvas) return false
+    const { photos, prev_page } = await pexels.photos.search(params)
 
-                const out = fs.createWriteStream(__dirname + '/out.jpg');
-                const stream = canvas.createJPEGStream();
-                stream.pipe(out);
-                out.on('finish', async () => {
-                  let resultPhoto = await insta(citation.data, photo, __dirname + '/out.jpg');
-                  // delete file
-                  //fs.unlinkSync(__dirname + '/out.jpg');
-                });
+    if (!photos[0]) {
+        const cut = (prev_page.substring(prev_page.indexOf('&page='), prev_page.lastIndexOf('&per') + 1))
+            .replace("&page=", "")
+            .replace("&", "")
+            .trim()
 
-                return true
-            
-            })
-        });
-    });
-    
+        return getPhoto(theme, cut)
+    }
+
+    const randomItem = photos[Math.floor(Math.random() * photos.length)];
+    return await pexels.photos.show({ id: randomItem.id })
 }
 
-async function insta(citation, photo, path) {
-
-    let url = await imgbbUploader("dfab0d40e28bd95243df755881260488", path);
-    url = encodeURIComponent(url.url)
-
-    let caption = `${citation.quote} | ${citation.name} \n\n #citation #proverbe #quoteoftheday #motivate #successful #sketchart #illustrationart #illustrate #graphic_designer #organism #photocaption #livingthings #happymoment #instaart #happy #font #brand #graphics #event #logo #happythoughts #happymood #graphic_arts #niceatmosphere`;
-
-    let publishResult = await ig.publish.photo({
-        file: await readFileAsync(path),
-        caption: caption
-    });
-
-    return publishResult
-}
-
-function drawImage(quoteString, url) {
+async function makeImage(citation, author, photo, avg_color) {
     const canvas = createCanvas(1080, 1080);
     const ctx = canvas.getContext('2d')
-  
-    return loadImage(url).then((image) => {
-      const imgSize = Math.min(image.width, image.height);
-    
-      const left = (image.width - imgSize) / 2;
-      const top = (image.height - imgSize) / 2;
-      
-      ctx.drawImage(image, left, top, imgSize, imgSize, 0, 0, ctx.canvas.width, ctx.canvas.height);
-  
-      // Dessine un rectangle noir transparent sur l'image
-      ctx.fillStyle = 'rgba(0, 0, 0, 0.5)';
-      ctx.fillRect(0, 0, ctx.canvas.width, ctx.canvas.height);
-  
-  
-      // Dessine le texte le plus gros possible au centre de l'image, avec un padding de 10px et des retours à la ligne
 
-      let textWidth = ctx.measureText(quoteString).width;
+    const image = await loadImage(photo)
 
-      let name = 'already.json';
-      let file = JSON.parse(fs.readFileSync(name).toString());
-      let arrayPhrases = file.phrases
+    const imgSize = Math.min(image.width, image.height);
+    const left = (image.width - imgSize) / 2;
+    const top = (image.height - imgSize) / 2;
 
-      let find = arrayPhrases.find(phrase => phrase === quoteString);
-      if (find) return false
+    ctx.drawImage(image, left, top, imgSize, imgSize, 0, 0, ctx.canvas.width, ctx.canvas.height);
 
-      arrayPhrases.push(quoteString)
-      fs.writeFileSync(name, JSON.stringify(file));
-  
-      // use font
-      ctx.font = 'bold 100px "Helvetica Neue", Helvetica, Arial, sans-serif';
+    // Dessine un rectangle noir transparent sur l'image
+    ctx.fillStyle = 'rgba(0, 0, 0, 0.5)';
+    ctx.fillRect(0, 0, ctx.canvas.width, ctx.canvas.height);
 
-      ctx.textAlign = 'center';
-      ctx.textBaseline = 'middle';
-      ctx.fillStyle = 'white';
-      ctx.shadowColor = "black";
-      ctx.shadowOffsetX = 10;
-      ctx.shadowOffsetY = 10;
-      ctx.shadowBlur = 25;
-      
-      wrapText(ctx, quoteString, ctx.canvas.width / 2, ctx.canvas.height / 3, ctx.canvas.width - 20, 100); 
-      
-      console.log('Image drawn');
-  
-      return canvas;
-    })
+    // Dessine le texte le plus gros possible au centre de l'image, avec un padding de 10px et des retours à la ligne
+    let textWidth = ctx.measureText(citation).width;
+
+    let name = 'already.json';
+    let file = JSON.parse(fs.readFileSync(name).toString());
+    let arrayPhrases = file.phrases
+
+    let find = arrayPhrases.find(phrase => phrase === citation);
+    if (find) return false
+
+    arrayPhrases.push(citation)
+    fs.writeFileSync(name, JSON.stringify(file));
+
+    // use font
+    ctx.font = 'bold 100px "Helvetica Neue", Helvetica, Arial, sans-serif';
+
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+    ctx.fillStyle = 'white';
+    ctx.shadowColor = "black";
+    ctx.shadowOffsetX = 10;
+    ctx.shadowOffsetY = 10;
+    ctx.shadowBlur = 25;
+
+    wrapText(ctx, citation, ctx.canvas.width / 2, ctx.canvas.height / 3, ctx.canvas.width - 20, 100);
+
+    const out = fs.createWriteStream(__dirname + '/out.jpg');
+    const stream = canvas.createJPEGStream();
+    stream.pipe(out);
+    out.on('finish', async () => {
+        console.log("Finish !")
+        //let resultPhoto = await insta(citation.data, photo, __dirname + '/out.jpg');
+        // delete file
+        //fs.unlinkSync(__dirname + '/out.jpg');
+    });
 }
 
 function wrapText(ctx, text, x, y, maxWidth, lineHeight) {
     const words = text.split(' ');
     let line = '';
 
-    for(let n = 0; n < words.length; n++) {
+    for (let n = 0; n < words.length; n++) {
         const testLine = line + words[n] + ' ';
         const metrics = ctx.measureText(testLine);
         const testWidth = metrics.width;
         if (testWidth > maxWidth && n > 0) {
             ctx.fillText(line, x, y);
-            
+
             const temp = ctx.fillStyle;
             ctx.fillStyle = 'black';
             ctx.strokeText(line, x, y);
@@ -222,8 +174,7 @@ function wrapText(ctx, text, x, y, maxWidth, lineHeight) {
 
             line = words[n] + ' ';
             y += lineHeight;
-        }
-        else {
+        } else {
             line = testLine;
         }
     }
@@ -233,4 +184,16 @@ function wrapText(ctx, text, x, y, maxWidth, lineHeight) {
     ctx.fillStyle = 'black';
     ctx.strokeText(line, x, y);
     ctx.fillStyle = temp;
+}
+
+async function insta(citation, photo, path) {
+
+    let caption = `${citation.quote} | ${citation.name} \n\n #citation #proverbe #quoteoftheday #motivate #successful #sketchart #illustrationart #illustrate #graphic_designer #organism #photocaption #livingthings #happymoment #instaart #happy #font #brand #graphics #event #logo #happythoughts #happymood #graphic_arts #niceatmosphere`;
+
+    const publishResult = await ig.publish.photo({
+        file: await readFileAsync(path),
+        caption: caption
+    });
+
+    return publishResult
 }

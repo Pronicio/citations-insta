@@ -3,6 +3,11 @@ const dotenv = require('dotenv').config().parsed;
 const axios = require('axios');
 const cheerio = require('cheerio');
 
+const puppeteer = require('puppeteer-extra')
+const StealthPlugin = require('puppeteer-extra-plugin-stealth')
+puppeteer.use(StealthPlugin())
+
+const translate = require('translate-google')
 const { createClient } = require('pexels');
 const pexels = createClient(process.env.PEXELS_TOKEN);
 
@@ -51,38 +56,44 @@ async function citationOfTheDay() {
     }
 }
 
-async function randomCitation(word) {
-    const page = Math.floor(Math.random() * 100)
+async function randomCitation(theme) {
+    const pageNumber = Math.floor(Math.random() * 155)
 
-    const scrap = await axios({
-        url: `https://www.dicocitations.com/citation/${word}/1/${page}.php`,
-        method: "get"
-    })
+    const browser = await puppeteer.launch({
+        executablePath: process.env.PUPPETEER_EXECUTABLE_PATH,
+        headless: true
+    });
+    const page = await browser.newPage();
 
-    const $ = cheerio.load(scrap.data, { decodeEntities: true });
+    await page.goto(`https://citations.ouest-france.fr/theme/${theme}/?page=${pageNumber}`, { waitUntil: 'domcontentloaded' });
+    const scrap = await page.content()
+
+    await browser.close();
+
+    const $ = cheerio.load(scrap, { decodeEntities: true });
 
     const data = []
 
     $('blockquote').each((index, element) => {
         const el = $(element)
-        const text = el.text()
-        console.log(text);
 
-        const parent = el.next().next().next()
-        const author = parent.children().children().text()
+        const text = el.find('a').text()
+        const author = el.next().text()
 
         data.push({ text, author })
     });
 
     const citation = data[Math.floor(Math.random() * data.length)];
-    const photo = await getPhoto(word)
+    const photo = await getPhoto(theme)
 
     await makeImage(citation.text, citation.author, photo.src.original, photo.avg_color)
 }
 
 async function getPhoto(theme, page) {
+    const themeTranslated = await translate(theme, { from: 'fr', to: 'en' })
+
     const params = {
-        query: theme,
+        query: themeTranslated,
         page: page || Math.floor(Math.random() * 80),
         per_page: 50,
         orientation: 'square'

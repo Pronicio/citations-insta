@@ -11,8 +11,7 @@ const translate = require('translate-google')
 const { createClient } = require('pexels');
 const pexels = createClient(process.env.PEXELS_TOKEN);
 
-const canvas = require('canvas');
-const { createCanvas, loadImage } = canvas;
+const { registerFont, createCanvas, loadImage } = require('canvas');
 
 const fs = require('fs');
 const { readFile } = require('fs');
@@ -25,8 +24,14 @@ const ig = new IgApiClient();
 main().then()
 
 async function main() {
+    const fonts = [ "AmaticSC", "CantataOne" ]
 
-    const citation = await randomCitation("art")
+    for (const element of fonts) {
+        registerFont(`./fonts/${element}/${element}-Regular.ttf`, { family: element })
+    }
+
+    await makeImage("Le véritable amour ne meurt jamais. Seuls, les éphémères s'en vont, tels, un feu de paille issu d'une passion sans lendemain.", "Sabrina Desquiens-Mékhloufi", "https://images.pexels.com/photos/755858/pexels-photo-755858.jpeg?auto=compress&cs=tinysrgb&w=1260&h=750&dpr=1", "#a5a395")
+    //const citation = await randomCitation("art")
 
     const now = new Date();
     let millisTill10 = new Date(now.getFullYear(), now.getMonth(), now.getDate(), 10, 0, 0, 0) - now;
@@ -35,7 +40,7 @@ async function main() {
         millisTill10 += 86400000;
     }
 
-    setInterval(citationOfTheDay, millisTill10);
+    //setInterval(citationOfTheDay, millisTill10);
     //setInterval(CitationTheme, 10800000); //3h
 }
 
@@ -84,6 +89,16 @@ async function randomCitation(theme) {
     });
 
     const citation = data[Math.floor(Math.random() * data.length)];
+
+    const file = JSON.parse(fs.readFileSync('already.json').toString());
+    const arrayPhrases = file.phrases;
+
+    const find = arrayPhrases.find(phrase => phrase === citation);
+    if (find) return await randomCitation(theme)
+
+    arrayPhrases.push(citation)
+    fs.writeFileSync('already.json', JSON.stringify(file));
+
     const photo = await getPhoto(theme)
 
     await makeImage(citation.text, citation.author, photo.src.original, photo.avg_color)
@@ -126,35 +141,19 @@ async function makeImage(citation, author, photo, avg_color) {
 
     ctx.drawImage(image, left, top, imgSize, imgSize, 0, 0, ctx.canvas.width, ctx.canvas.height);
 
-    // Dessine un rectangle noir transparent sur l'image
-    ctx.fillStyle = 'rgba(0, 0, 0, 0.5)';
-    ctx.fillRect(0, 0, ctx.canvas.width, ctx.canvas.height);
+    ctx.fillStyle = 'rgba(255,255,255,0)'
+    ctx.fillRect(0, 0, image.width, image.height)
 
-    // Dessine le texte le plus gros possible au centre de l'image, avec un padding de 10px et des retours à la ligne
-    let textWidth = ctx.measureText(citation).width;
+    const textWidth = ctx.measureText(citation).width;
+    console.log(textWidth);
 
-    let name = 'already.json';
-    let file = JSON.parse(fs.readFileSync(name).toString());
-    let arrayPhrases = file.phrases
-
-    let find = arrayPhrases.find(phrase => phrase === citation);
-    if (find) return false
-
-    arrayPhrases.push(citation)
-    fs.writeFileSync(name, JSON.stringify(file));
-
-    // use font
-    ctx.font = 'bold 100px "Helvetica Neue", Helvetica, Arial, sans-serif';
-
-    ctx.textAlign = 'center';
+    ctx.textAlign = 'center'
     ctx.textBaseline = 'middle';
-    ctx.fillStyle = 'white';
-    ctx.shadowColor = "black";
-    ctx.shadowOffsetX = 10;
-    ctx.shadowOffsetY = 10;
-    ctx.shadowBlur = 25;
+    ctx.fillStyle = '#ff001d';
 
-    wrapText(ctx, citation, ctx.canvas.width / 2, ctx.canvas.height / 3, ctx.canvas.width - 20, 100);
+    ctx.font = 'bold 75px "AmaticSC"';
+
+    wrapText(ctx, citation, ctx.canvas.width / 2, ctx.canvas.height / 4, ctx.canvas.width - 40, 100);
 
     const out = fs.createWriteStream(__dirname + '/out.jpg');
     const stream = canvas.createJPEGStream();

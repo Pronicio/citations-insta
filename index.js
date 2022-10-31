@@ -13,123 +13,127 @@ const translate = require('translate-google')
 const { createClient } = require('pexels');
 const pexels = createClient(process.env.PEXELS_TOKEN);
 
+const FormData = require('form-data');
 const fs = require('fs');
 const themes = require("./themes.json")
 
-main().then()
+const { IgApiClient } = require('instagram-private-api')
 
-async function main() {
-    const citation = await randomCitation()
-
-    const now = new Date();
-    let millisTill10 = new Date(now.getFullYear(), now.getMonth(), now.getDate(), 10, 0, 0, 0) - now;
-
-    if (millisTill10 < 0) {
-        millisTill10 += 86400000;
+class Main {
+    constructor() {
+        //instaConnect()
+        const citation = this.randomCitation().then()
     }
 
-    //setInterval(citationOfTheDay, millisTill10);
-    //setInterval(CitationTheme, 10800000); //3h
-}
+    async instaConnect() {
+        this.ig = new IgApiClient();
+        this.ig.state.generateDevice(process.env.INSTA_USERNAME);
 
-async function citationOfTheDay() {
-    const scrap = await axios({
-        url: "https://www.dicocitations.com/citationdujour.php",
-        method: "get"
-    })
+        await this.ig.simulate.preLoginFlow();
+        this.user = await this.ig.account.login(process.env.INSTA_USERNAME, process.env.INSTA_PASSWORD);
+        console.log(this.user);
 
-    const $ = cheerio.load(scrap.data);
-
-    const text = $("blockquote span b")
-    const author = $("blockquote span div a")
-
-    const photo = await getPhoto("nature")
-
-    await makeImage(text.text(), author.text(), photo.src.original, photo.avg_color)
-}
-
-async function randomCitation() {
-    const theme = themes[Math.floor(Math.random() * themes.length)]
-    const pageNumber = Math.floor(Math.random() * 155) //TODO: Get the last page !!
-
-    const browser = await puppeteer.launch({
-        executablePath: process.env.PUPPETEER_EXECUTABLE_PATH,
-        headless: true
-    });
-    const page = await browser.newPage();
-
-    await page.goto(`https://citations.ouest-france.fr/theme/${theme}/?page=${pageNumber}`, { waitUntil: 'domcontentloaded' });
-    const scrap = await page.content()
-
-    await browser.close();
-
-    const $ = cheerio.load(scrap, { decodeEntities: true });
-
-    const data = []
-
-    $('blockquote').each((index, element) => {
-        const el = $(element)
-
-        const text = el.find('a').text()
-        const author = el.next().text()
-
-        data.push({ text, author })
-    });
-
-    const citation = data[Math.floor(Math.random() * data.length)];
-
-    const file = JSON.parse(fs.readFileSync('already.json').toString());
-    const arrayPhrases = file.phrases;
-
-    const find = arrayPhrases.find(phrase => phrase === citation);
-    if (find) return await randomCitation(theme)
-
-    arrayPhrases.push(citation)
-    fs.writeFileSync('already.json', JSON.stringify(file));
-
-    console.log("Scrap the citation !")
-
-    const photo = await getPhoto(theme)
-
-    console.log("Photo get !")
-
-    await makeImage(citation.text, citation.author, photo.src.original, photo.avg_color)
-}
-
-async function getPhoto(theme, page) {
-    const themeTranslated = await translate(theme, { from: 'fr', to: 'en' })
-
-    const params = {
-        query: themeTranslated,
-        page: page || Math.floor(Math.random() * 80),
-        per_page: 50,
-        orientation: 'square'
     }
 
-    const { photos, prev_page } = await pexels.photos.search(params)
+    async citationOfTheDay() {
+        const scrap = await axios({
+            url: "https://www.dicocitations.com/citationdujour.php",
+            method: "get"
+        })
 
-    if (!photos[0]) {
-        try {
-            const cut = (prev_page.substring(prev_page.indexOf('&page='), prev_page.lastIndexOf('&per') + 1))
-                .replace("&page=", "")
-                .replace("&", "")
-                .trim()
+        const $ = cheerio.load(scrap.data);
 
-            return getPhoto(theme, cut)
-        } catch (e) {
-            return getPhoto(theme)
+        const text = $("blockquote span b")
+        const author = $("blockquote span div a")
+
+        const photo = await getPhoto("nature")
+
+        await this.makeImage(text.text(), author.text(), photo.src.original, photo.avg_color)
+    }
+
+    async randomCitation() {
+        const theme = themes[Math.floor(Math.random() * themes.length)]
+        const pageNumber = Math.floor(Math.random() * 155) //TODO: Get the last page !!
+
+        const browser = await puppeteer.launch({
+            executablePath: process.env.PUPPETEER_EXECUTABLE_PATH,
+            headless: true
+        });
+        const page = await browser.newPage();
+
+        await page.goto(`https://citations.ouest-france.fr/theme/${theme}/?page=${pageNumber}`, { waitUntil: 'domcontentloaded' });
+        const scrap = await page.content()
+
+        await browser.close();
+
+        const $ = cheerio.load(scrap, { decodeEntities: true });
+
+        const data = []
+
+        $('blockquote').each((index, element) => {
+            const el = $(element)
+
+            const text = el.find('a').text()
+            const author = el.next().text()
+
+            data.push({ text, author })
+        });
+
+        const citation = data[Math.floor(Math.random() * data.length)];
+
+        const file = JSON.parse(fs.readFileSync('already.json').toString());
+        const arrayPhrases = file.phrases;
+
+        const find = arrayPhrases.find(phrase => phrase === citation);
+        if (find) return await randomCitation(theme)
+
+        arrayPhrases.push(citation)
+        fs.writeFileSync('already.json', JSON.stringify(file));
+
+        console.log("Scrap the citation !")
+
+        const photo = await this.getPhoto(theme)
+
+        console.log("Photo get !")
+
+        await this.makeImage(citation.text, citation.author, photo.src.original, photo.avg_color)
+    }
+
+    async getPhoto(theme, page) {
+        const themeTranslated = await translate(theme, { from: 'fr', to: 'en' })
+
+        const params = {
+            query: themeTranslated,
+            page: page || Math.floor(Math.random() * 80),
+            per_page: 50,
+            orientation: 'square'
         }
+
+        const { photos, prev_page } = await pexels.photos.search(params)
+
+        if (!photos[0]) {
+            try {
+                const cut = (prev_page.substring(prev_page.indexOf('&page='), prev_page.lastIndexOf('&per') + 1))
+                    .replace("&page=", "")
+                    .replace("&", "")
+                    .trim()
+
+                return this.getPhoto(theme, cut)
+            } catch (e) {
+                console.error(e)
+                return this.getPhoto(theme)
+            }
+        }
+
+        const randomItem = photos[Math.floor(Math.random() * photos.length)];
+        return await pexels.photos.show({ id: randomItem.id })
     }
 
-    const randomItem = photos[Math.floor(Math.random() * photos.length)];
-    return await pexels.photos.show({ id: randomItem.id })
-}
+    async makeImage(citation, author, photo, avg_color) {
+        const width = 750
+        const font = this.getRandomFont()
 
-async function makeImage(citation, author, photo, avg_color) {
-    const width = 750
-    const font = getRandomFont()
-
-    const html = `
+        const html = `
     <!doctype html>
     <html>
     <head>
@@ -158,49 +162,70 @@ async function makeImage(citation, author, photo, avg_color) {
     </html>
     `
 
-    try {
-        console.log("Launching browser... !")
+        try {
+            console.log("Launching browser... !")
 
-        const browser = await puppeteer.launch({
-            executablePath: process.env.PUPPETEER_EXECUTABLE_PATH,
-            headless: true
-        });
-        const page = await browser.newPage();
+            const browser = await puppeteer.launch({
+                executablePath: process.env.PUPPETEER_EXECUTABLE_PATH,
+                headless: true
+            });
+            const page = await browser.newPage();
 
-        await page.setViewport({
-            width: width,
-            height: width
-        });
+            await page.setViewport({
+                width: width,
+                height: width
+            });
 
-        await page.setContent(html, { waitUntil: 'networkidle0' });
-        console.log("Content set !")
+            await page.setContent(html, { waitUntil: 'networkidle0' });
+            console.log("Content set !")
 
-        await page.screenshot({ path: 'out.png' });
-        console.log("Screenshot take !")
-        await browser.close();
+            await page.screenshot({
+                path: 'out.jpeg',
+                type: 'jpeg',
+                quality: 100
+            });
+            console.log("Screenshot take !")
+            await browser.close();
 
-        //TODO: Send to instagram !
+            await this.publish(citation, author)
 
-    } catch (err) {
-        console.error(err);
+        } catch (err) {
+            console.error(err);
+        }
+    }
+
+    async publish(citation, author) {
+        const bitmap = fs.readFileSync("out.jpeg");
+        const b64 = bitmap.toString('base64');
+
+        const data = new FormData();
+        data.append('image', b64);
+
+        const config = {
+            method: 'post',
+            url: 'https://api.imgur.com/3/image',
+            headers: {
+                'Authorization': `Client-ID ${process.env.IMGUR_CLIENT_ID}`,
+                ...data.getHeaders()
+            },
+            data: data
+        };
+
+        const req = await axios(config)
+            .catch(function (error) {
+                console.log(error);
+            });
+
+        const link = req.data.data.link;
+        const caption = `${citation} | ${author} \n\n #citation #proverbe #quoteoftheday #motivate #successful #sketchart #illustrationart #illustrate #graphic_designer #organism #photocaption #livingthings #happymoment #instaart #happy #font #brand #graphics #event #logo #happythoughts #happymood #graphic_arts #niceatmosphere`;
+
+        console.log(link)
+    }
+
+    getRandomFont() {
+        const fonts = [ "Amatic SC", "Cantata One", "Graduate", "Kaushan Script", "Lora", "Montserrat", "PT Mono", "Raleway" ]
+        return (fonts[Math.floor(Math.random() * fonts.length)]).replace(" ", "+")
     }
 }
 
-function getRandomFont() {
-    const fonts = [ "Amatic SC", "Cantata One", "Graduate", "Kaushan Script", "Lora", "Montserrat", "PT Mono", "Raleway" ]
-    return (fonts[Math.floor(Math.random() * fonts.length)]).replace(" ", "+")
-}
-
-/*
-async function insta(citation, photo, path) {
-
-    let caption = `${citation.quote} | ${citation.name} \n\n #citation #proverbe #quoteoftheday #motivate #successful #sketchart #illustrationart #illustrate #graphic_designer #organism #photocaption #livingthings #happymoment #instaart #happy #font #brand #graphics #event #logo #happythoughts #happymood #graphic_arts #niceatmosphere`;
-
-    const publishResult = await ig.publish.photo({
-        file: await readFileAsync(path),
-        caption: caption
-    });
-
-    return publishResult
-}
- */
+new Main()

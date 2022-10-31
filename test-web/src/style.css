@@ -1,0 +1,34 @@
+@import url('https://fonts.googleapis.com/css2?family=Amatic+SC&family=Cantata+One&family=Graduate&family=Kaushan+Script&family=Lora&family=Montserrat&family=PT+Mono&family=Pacifico&family=Raleway&display=swap');
+
+body {
+    width: 750px;
+}
+
+#content {
+    height: 100%;
+    width: 100%;
+
+    display: flex;
+    flex-direction: column;
+    flex-wrap: wrap;
+    align-items: center;
+    justify-content: center;
+    align-content: center;
+}
+
+.box {
+    margin: auto 3rem;
+    text-align: center;
+}
+
+h1 {
+    color: white;
+    font-size: 250%;
+    line-height: 5rem;
+    margin: 0;
+}
+
+h1 span {
+    padding: 0.5rem 0;
+    box-decoration-break: clone;
+}

@@ -2,35 +2,26 @@ const dotenv = require('dotenv').config().parsed;
 
 const axios = require('axios');
 const cheerio = require('cheerio');
+const sharp = require("sharp")
 
 const puppeteer = require('puppeteer-extra')
 const StealthPlugin = require('puppeteer-extra-plugin-stealth')
 puppeteer.use(StealthPlugin())
 
 const translate = require('translate-google')
+
 const { createClient } = require('pexels');
 const pexels = createClient(process.env.PEXELS_TOKEN);
 
-const { registerFont, createCanvas, loadImage } = require('canvas');
-
 const fs = require('fs');
-const { readFile } = require('fs');
-const { promisify } = require('util');
-const readFileAsync = promisify(readFile);
-
-const { IgApiClient } = require('instagram-private-api');
-const ig = new IgApiClient();
 
 main().then()
 
 async function main() {
-    const fonts = [ "AmaticSC", "CantataOne" ]
+    const fonts = [ "Amatic SC", "Cantata One", "Graduate", "Kaushan Script", "Lora", "Montserrat", "PT Mono", "Raleway" ]
+    const font = (fonts[Math.floor(Math.random() * fonts.length)]).replace(" ", "+")
 
-    for (const element of fonts) {
-        registerFont(`./fonts/${element}/${element}-Regular.ttf`, { family: element })
-    }
-
-    await makeImage("Le véritable amour ne meurt jamais. Seuls, les éphémères s'en vont, tels, un feu de paille issu d'une passion sans lendemain.", "Sabrina Desquiens-Mékhloufi", "https://images.pexels.com/photos/755858/pexels-photo-755858.jpeg?auto=compress&cs=tinysrgb&w=1260&h=750&dpr=1", "#a5a395")
+    await makeImage("Le véritable amour ne meurt jamais. Seuls, les éphémères s'en vont, tels, un feu de paille issu d'une passion sans lendemain.", "Sabrina Desquiens-Mékhloufi", "https://images.pexels.com/photos/755858/pexels-photo-755858.jpeg", "#a5a395", font)
     //const citation = await randomCitation("art")
 
     const now = new Date();
@@ -55,10 +46,9 @@ async function citationOfTheDay() {
     const text = $("blockquote span b")
     const author = $("blockquote span div a")
 
-    return {
-        text: text.text(),
-        author: author.text()
-    }
+    const photo = await getPhoto("nature")
+
+    await makeImage(text.text(), author.text(), photo.src.original, photo.avg_color)
 }
 
 async function randomCitation(theme) {
@@ -129,73 +119,64 @@ async function getPhoto(theme, page) {
     return await pexels.photos.show({ id: randomItem.id })
 }
 
-async function makeImage(citation, author, photo, avg_color) {
-    const canvas = createCanvas(1080, 1080);
-    const ctx = canvas.getContext('2d')
+async function makeImage(citation, author, photo, avg_color, font) {
+    const width = 750
+    const html = `
+    <!doctype html>
+    <html>
+    <head>
+        <title>Document</title>
+        <style>
+            body { margin: 0; width: ${width}px; height: ${width}px; }
+        </style>
+    </head>
+    <body>
+        <svg xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink" fill="none" viewBox="0 0 ${width} ${width}" width="${width}" height="${width}">
+            <style>@import url("https://fonts.googleapis.com/css2?family=${font}");</style>
+            <foreignObject width="100%" height="100%" style="background: url('${photo}?w=${width}') no-repeat;">
+                <div id="content" xmlns="http://www.w3.org/1999/xhtml"
+                     style="height: 100%; width: 100%; display: flex; flex-flow: column wrap; align-items: center; place-content: center;">
+                    <div class="box" style="margin: auto 3rem; text-align: center;">
+                        <h1 style="color: white; font-size: 250%; line-height: 5rem; margin: 0;">
+                            <span style="background-color: ${avg_color}; font-family: '${font}', sans-serif; box-shadow: ${avg_color} 1rem 0 0, ${avg_color} -1rem 0 0; padding: 0.5rem 0;">
+                                ${citation}
+                            </span>
+                        </h1>
+                    </div>
+                </div>
+            </foreignObject>
+        </svg>
+    </body>
+    </html>
+    `
 
-    const image = await loadImage(photo)
+    try {
+        console.log("Launching browser... !")
 
-    const imgSize = Math.min(image.width, image.height);
-    const left = (image.width - imgSize) / 2;
-    const top = (image.height - imgSize) / 2;
+        const browser = await puppeteer.launch({
+            executablePath: process.env.PUPPETEER_EXECUTABLE_PATH,
+            headless: true
+        });
+        const page = await browser.newPage();
 
-    ctx.drawImage(image, left, top, imgSize, imgSize, 0, 0, ctx.canvas.width, ctx.canvas.height);
+        await page.setViewport({
+            width: width,
+            height: width
+        });
 
-    ctx.fillStyle = 'rgba(255,255,255,0)'
-    ctx.fillRect(0, 0, image.width, image.height)
+        await page.setContent(html, { waitUntil: 'networkidle0' });
+        console.log("Content set !")
 
-    const textWidth = ctx.measureText(citation).width;
-    console.log(textWidth);
+        await page.screenshot({ path: 'out.png' });
+        console.log("Screenshot take !")
+        await browser.close();
 
-    ctx.textAlign = 'center'
-    ctx.textBaseline = 'middle';
-    ctx.fillStyle = '#ff001d';
-
-    ctx.font = 'bold 75px "AmaticSC"';
-
-    wrapText(ctx, citation, ctx.canvas.width / 2, ctx.canvas.height / 4, ctx.canvas.width - 40, 100);
-
-    const out = fs.createWriteStream(__dirname + '/out.jpg');
-    const stream = canvas.createJPEGStream();
-    stream.pipe(out);
-    out.on('finish', async () => {
-        console.log("Finish !")
-        //let resultPhoto = await insta(citation.data, photo, __dirname + '/out.jpg');
-        // delete file
-        //fs.unlinkSync(__dirname + '/out.jpg');
-    });
-}
-
-function wrapText(ctx, text, x, y, maxWidth, lineHeight) {
-    const words = text.split(' ');
-    let line = '';
-
-    for (let n = 0; n < words.length; n++) {
-        const testLine = line + words[n] + ' ';
-        const metrics = ctx.measureText(testLine);
-        const testWidth = metrics.width;
-        if (testWidth > maxWidth && n > 0) {
-            ctx.fillText(line, x, y);
-
-            const temp = ctx.fillStyle;
-            ctx.fillStyle = 'black';
-            ctx.strokeText(line, x, y);
-            ctx.fillStyle = temp;
-
-            line = words[n] + ' ';
-            y += lineHeight;
-        } else {
-            line = testLine;
-        }
+    } catch (err) {
+        console.error(err);
     }
-    ctx.fillText(line, x, y);
-
-    const temp = ctx.fillStyle;
-    ctx.fillStyle = 'black';
-    ctx.strokeText(line, x, y);
-    ctx.fillStyle = temp;
 }
 
+/*
 async function insta(citation, photo, path) {
 
     let caption = `${citation.quote} | ${citation.name} \n\n #citation #proverbe #quoteoftheday #motivate #successful #sketchart #illustrationart #illustrate #graphic_designer #organism #photocaption #livingthings #happymoment #instaart #happy #font #brand #graphics #event #logo #happythoughts #happymood #graphic_arts #niceatmosphere`;
@@ -207,3 +188,4 @@ async function insta(citation, photo, path) {
 
     return publishResult
 }
+ */

@@ -14,15 +14,12 @@ const { createClient } = require('pexels');
 const pexels = createClient(process.env.PEXELS_TOKEN);
 
 const fs = require('fs');
+const themes = require("./themes.json")
 
 main().then()
 
 async function main() {
-    const fonts = [ "Amatic SC", "Cantata One", "Graduate", "Kaushan Script", "Lora", "Montserrat", "PT Mono", "Raleway" ]
-    const font = (fonts[Math.floor(Math.random() * fonts.length)]).replace(" ", "+")
-
-    await makeImage("Le véritable amour ne meurt jamais. Seuls, les éphémères s'en vont, tels, un feu de paille issu d'une passion sans lendemain.", "Sabrina Desquiens-Mékhloufi", "https://images.pexels.com/photos/755858/pexels-photo-755858.jpeg", "#a5a395", font)
-    //const citation = await randomCitation("art")
+    const citation = await randomCitation()
 
     const now = new Date();
     let millisTill10 = new Date(now.getFullYear(), now.getMonth(), now.getDate(), 10, 0, 0, 0) - now;
@@ -51,8 +48,9 @@ async function citationOfTheDay() {
     await makeImage(text.text(), author.text(), photo.src.original, photo.avg_color)
 }
 
-async function randomCitation(theme) {
-    const pageNumber = Math.floor(Math.random() * 155)
+async function randomCitation() {
+    const theme = themes[Math.floor(Math.random() * themes.length)]
+    const pageNumber = Math.floor(Math.random() * 155) //TODO: Get the last page !!
 
     const browser = await puppeteer.launch({
         executablePath: process.env.PUPPETEER_EXECUTABLE_PATH,
@@ -89,7 +87,11 @@ async function randomCitation(theme) {
     arrayPhrases.push(citation)
     fs.writeFileSync('already.json', JSON.stringify(file));
 
+    console.log("Scrap the citation !")
+
     const photo = await getPhoto(theme)
+
+    console.log("Photo get !")
 
     await makeImage(citation.text, citation.author, photo.src.original, photo.avg_color)
 }
@@ -107,20 +109,26 @@ async function getPhoto(theme, page) {
     const { photos, prev_page } = await pexels.photos.search(params)
 
     if (!photos[0]) {
-        const cut = (prev_page.substring(prev_page.indexOf('&page='), prev_page.lastIndexOf('&per') + 1))
-            .replace("&page=", "")
-            .replace("&", "")
-            .trim()
+        try {
+            const cut = (prev_page.substring(prev_page.indexOf('&page='), prev_page.lastIndexOf('&per') + 1))
+                .replace("&page=", "")
+                .replace("&", "")
+                .trim()
 
-        return getPhoto(theme, cut)
+            return getPhoto(theme, cut)
+        } catch (e) {
+            return getPhoto(theme)
+        }
     }
 
     const randomItem = photos[Math.floor(Math.random() * photos.length)];
     return await pexels.photos.show({ id: randomItem.id })
 }
 
-async function makeImage(citation, author, photo, avg_color, font) {
+async function makeImage(citation, author, photo, avg_color) {
     const width = 750
+    const font = getRandomFont()
+
     const html = `
     <!doctype html>
     <html>
@@ -171,9 +179,16 @@ async function makeImage(citation, author, photo, avg_color, font) {
         console.log("Screenshot take !")
         await browser.close();
 
+        //TODO: Send to instagram !
+
     } catch (err) {
         console.error(err);
     }
+}
+
+function getRandomFont() {
+    const fonts = [ "Amatic SC", "Cantata One", "Graduate", "Kaushan Script", "Lora", "Montserrat", "PT Mono", "Raleway" ]
+    return (fonts[Math.floor(Math.random() * fonts.length)]).replace(" ", "+")
 }
 
 /*

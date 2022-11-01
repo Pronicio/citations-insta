@@ -21,8 +21,9 @@ const { IgApiClient } = require('instagram-private-api')
 
 class Main {
     constructor() {
-        //instaConnect()
-        const citation = this.randomCitation().then()
+        this.instaConnect().then(async () => {
+            await this.randomCitation()
+        })
     }
 
     async instaConnect() {
@@ -30,9 +31,8 @@ class Main {
         this.ig.state.generateDevice(process.env.INSTA_USERNAME);
 
         await this.ig.simulate.preLoginFlow();
-        this.user = await this.ig.account.login(process.env.INSTA_USERNAME, process.env.INSTA_PASSWORD);
-        console.log(this.user);
-
+        await this.ig.account.login(process.env.INSTA_USERNAME, process.env.INSTA_PASSWORD);
+        console.log("Instagram connected !");
     }
 
     async citationOfTheDay() {
@@ -120,6 +120,7 @@ class Main {
 
                 return this.getPhoto(theme, cut)
             } catch (e) {
+                console.log(prev_page)
                 console.error(e)
                 return this.getPhoto(theme)
             }
@@ -131,7 +132,6 @@ class Main {
 
     async makeImage(citation, author, photo, avg_color) {
         const width = 750
-        const font = this.getRandomFont()
 
         const html = `
     <!doctype html>
@@ -144,13 +144,12 @@ class Main {
     </head>
     <body>
         <svg xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink" fill="none" viewBox="0 0 ${width} ${width}" width="${width}" height="${width}">
-            <style>@import url("https://fonts.googleapis.com/css2?family=${font}");</style>
             <foreignObject width="100%" height="100%" style="background: url('${photo}?w=${width}') no-repeat;">
                 <div id="content" xmlns="http://www.w3.org/1999/xhtml"
                      style="height: 100%; width: 100%; display: flex; flex-flow: column wrap; align-items: center; place-content: center;">
                     <div class="box" style="margin: auto 3rem; text-align: center;">
                         <h1 style="color: white; font-size: 250%; line-height: 5rem; margin: 0;">
-                            <span style="background-color: ${avg_color}; font-family: '${font}', sans-serif; box-shadow: ${avg_color} 1rem 0 0, ${avg_color} -1rem 0 0; padding: 0.5rem 0;">
+                            <span style="background-color: ${avg_color}; font-family: sans-serif; box-shadow: ${avg_color} 1rem 0 0, ${avg_color} -1rem 0 0; padding: 0.5rem 0;">
                                 ${citation}
                             </span>
                         </h1>
@@ -195,36 +194,14 @@ class Main {
     }
 
     async publish(citation, author) {
-        const bitmap = fs.readFileSync("out.jpeg");
-        const b64 = bitmap.toString('base64');
+        const caption = `${citation} | ${author} \n\n\n #citation #proverbe #quoteoftheday #motivate #successful #sketchart #illustrationart #illustrate #graphic_designer #organism #photocaption #livingthings #happymoment #instaart #happy #font #brand #graphics #event #logo #happythoughts #happymood #graphic_arts #niceatmosphere`;
 
-        const data = new FormData();
-        data.append('image', b64);
+        await this.ig.publish.photo({
+            file: fs.readFileSync("out.jpeg"),
+            caption: caption,
+        });
 
-        const config = {
-            method: 'post',
-            url: 'https://api.imgur.com/3/image',
-            headers: {
-                'Authorization': `Client-ID ${process.env.IMGUR_CLIENT_ID}`,
-                ...data.getHeaders()
-            },
-            data: data
-        };
-
-        const req = await axios(config)
-            .catch(function (error) {
-                console.log(error);
-            });
-
-        const link = req.data.data.link;
-        const caption = `${citation} | ${author} \n\n #citation #proverbe #quoteoftheday #motivate #successful #sketchart #illustrationart #illustrate #graphic_designer #organism #photocaption #livingthings #happymoment #instaart #happy #font #brand #graphics #event #logo #happythoughts #happymood #graphic_arts #niceatmosphere`;
-
-        console.log(link)
-    }
-
-    getRandomFont() {
-        const fonts = [ "Amatic SC", "Cantata One", "Graduate", "Kaushan Script", "Lora", "Montserrat", "PT Mono", "Raleway" ]
-        return (fonts[Math.floor(Math.random() * fonts.length)]).replace(" ", "+")
+        console.log("Photo published !");
     }
 }
 

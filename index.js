@@ -85,7 +85,7 @@ class Main {
         const arrayPhrases = file.phrases;
 
         const find = arrayPhrases.find(phrase => phrase === citation);
-        if (find) return await randomCitation(theme)
+        if (find) return await this.randomCitation(theme)
 
         arrayPhrases.push(citation)
         fs.writeFileSync('already.json', JSON.stringify(file));
@@ -120,8 +120,7 @@ class Main {
 
                 return this.getPhoto(theme, cut)
             } catch (e) {
-                console.log(prev_page)
-                console.error(e)
+                console.log(prev_page, theme)
                 return this.getPhoto(theme)
             }
         }
